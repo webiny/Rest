@@ -511,3 +511,5 @@ To run unit tests, you need to use the following command:
     $ cd path/to/Webiny/Component/Rest/
     $ composer.phar install
     $ phpunit
+
+Make sure that you update the configuration files inside `Test/Mocks/` folder.

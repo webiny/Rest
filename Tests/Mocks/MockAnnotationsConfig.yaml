@@ -1,4 +1,2 @@
 Annotations:
     Bridge: \Webiny\Component\Annotations\Bridge\Minime\Annotations
-    ClassLoader:
-        Minime\Annotations: /var/www/projects/webiny/Vendors/Minime/Annotations/src
