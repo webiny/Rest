@@ -27,8 +27,10 @@ class CacheTest extends \PHPUnit_Framework_TestCase
     {
         $requestBag = new RequestBag();
         // populate request bag and point the cache key creation to the mocked class
-        $requestBag->setApi('CacheTest')->setMethodData(['cache' => ['ttl' => 100]])
-                   ->setClassInstance(new MockCacheTestApiClass())->setClassData(['cacheKeyInterface' => true]);
+        $requestBag->setApi('CacheTest')
+                   ->setMethodData(['cache' => ['ttl' => 100]])
+                   ->setClassInstance(new MockCacheTestApiClass())
+                   ->setClassData(['cacheKeyInterface' => true]);
 
         \Webiny\Component\Rest\Response\Cache::purgeResult($requestBag);
         $result = \Webiny\Component\Rest\Response\Cache::getFromCache($requestBag);
@@ -39,8 +41,10 @@ class CacheTest extends \PHPUnit_Framework_TestCase
     {
         $requestBag = new RequestBag();
         // populate request bag and point the cache key creation to the mocked class
-        $requestBag->setApi('CacheTest')->setMethodData(['cache' => ['ttl' => 100]])
-                   ->setClassInstance(new MockCacheTestApiClass())->setClassData(['cacheKeyInterface' => true]);
+        $requestBag->setApi('CacheTest')
+                   ->setMethodData(['cache' => ['ttl' => 100]])
+                   ->setClassInstance(new MockCacheTestApiClass())
+                   ->setClassData(['cacheKeyInterface' => true]);
 
         $result = \Webiny\Component\Rest\Response\Cache::saveResult($requestBag, 'my result');
         $this->assertTrue($result);
@@ -50,8 +54,10 @@ class CacheTest extends \PHPUnit_Framework_TestCase
     {
         $requestBag = new RequestBag();
         // populate request bag and point the cache key creation to the mocked class
-        $requestBag->setApi('CacheTest')->setMethodData(['cache' => ['ttl' => 100]])
-                   ->setClassInstance(new MockCacheTestApiClass())->setClassData(['cacheKeyInterface' => true]);
+        $requestBag->setApi('CacheTest')
+                   ->setMethodData(['cache' => ['ttl' => 100]])
+                   ->setClassInstance(new MockCacheTestApiClass())
+                   ->setClassData(['cacheKeyInterface' => true]);
 
         \Webiny\Component\Rest\Response\Cache::saveResult($requestBag, 'my result');
 
@@ -63,8 +69,10 @@ class CacheTest extends \PHPUnit_Framework_TestCase
     {
         $requestBag = new RequestBag();
         // populate request bag and point the cache key creation to the mocked class
-        $requestBag->setApi('CacheTest')->setMethodData(['cache' => ['ttl' => 100]])
-                   ->setClassInstance(new MockCacheTestApiClass())->setClassData(['cacheKeyInterface' => true]);
+        $requestBag->setApi('CacheTest')
+                   ->setMethodData(['cache' => ['ttl' => 100]])
+                   ->setClassInstance(new MockCacheTestApiClass())
+                   ->setClassData(['cacheKeyInterface' => true]);
 
         \Webiny\Component\Rest\Response\Cache::saveResult($requestBag, 'my result');
 

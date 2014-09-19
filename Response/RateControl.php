@@ -48,7 +48,8 @@ class RateControl
         // verify that we have a Cache service set
         if (!($cache = $requestBag->getApiConfig()->get('Cache', false))) {
             throw new RestException('Rest Rate Control requires that you have a Cache service defined
-            under the Rest configuration.');
+            under the Rest configuration.'
+            );
         }
 
         // set the limit in response header

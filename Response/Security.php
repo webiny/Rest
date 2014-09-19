@@ -49,7 +49,8 @@ class Security
             $firewallName = $requestBag->getApiConfig()->get('Security.Firewall', false);
             if (!$firewallName) {
                 throw new RestException('When using Rest access rule, you must specify a Firewall in your configuration.
-                Alternatively you can implement the AccessInterface and do the check on your own.');
+                Alternatively you can implement the AccessInterface and do the check on your own.'
+                );
             }
 
             return self::security()->firewall($firewallName)->getUser()->hasRole($role);

@@ -211,8 +211,11 @@ class Router
         $matchedParameters = ($matchedMethod['matchedParameters']) ? $matchedMethod['matchedParameters'] : [];
 
         $requestBag = new RequestBag();
-        $requestBag->setClassData($classData)->setMethodData($methodData)->setMethodParameters($matchedParameters)
-                   ->setApi($this->_api)->setCompileCacheFile($this->_cacheFile);
+        $requestBag->setClassData($classData)
+                   ->setMethodData($methodData)
+                   ->setMethodParameters($matchedParameters)
+                   ->setApi($this->_api)
+                   ->setCompileCacheFile($this->_cacheFile);
 
         $callback = new Callback($requestBag);
 
