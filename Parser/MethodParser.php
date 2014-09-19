@@ -185,18 +185,18 @@ class MethodParser
                 'expires' => $annotations->get('header.cache.expires',
                                                $this->_classDefaults->get('header.cache.expires', 0
                                                )
-                    )
+                )
             ],
             'status' => [
                 'success'      => $successStatus,
                 'error'        => $annotations->get('header.status.error',
                                                     $this->_classDefaults->get('header.status.error', 404
                                                     )
-                    ),
+                ),
                 'errorMessage' => $annotations->get('header.status.errorMessage',
                                                     $this->_classDefaults->get('header.status.errorMessage', ''
                                                     )
-                    )
+                )
             ]
         ];
     }
