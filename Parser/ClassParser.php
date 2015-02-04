@@ -109,10 +109,12 @@ class ClassParser
         }
 
         foreach ($methods as &$m) {
-            $methodParser = new MethodParser($this->_class, $m, $this->_normalize);
-            $parsedMethod = $methodParser->parse();
-            if ($parsedMethod) {
-                $this->_parsedClass->addApiMethod($methodParser->parse());
+            if ($m->isPublic()) {
+                $methodParser = new MethodParser($this->_class, $m, $this->_normalize);
+                $parsedMethod = $methodParser->parse();
+                if ($parsedMethod) {
+                    $this->_parsedClass->addApiMethod($parsedMethod);
+                }
             }
         }
     }

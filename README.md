@@ -7,22 +7,10 @@ Install the component
 ---------------------
 The best way to install the component is using Composer.
 
-```json
-{
-    "require": {
-        "webiny/rest": "1.1.*"
-    }
-}
+```bash
+composer require webiny/rest
 ```
 For additional versions of the package, visit the [Packagist page](https://packagist.org/packages/webiny/rest).
-
-Once you have your `composer.json` file in place, just run the install command.
-
-    $ php composer.phar install
-
-To learn more about Composer, and how to use it, please visit [this link](https://getcomposer.org/doc/01-basic-usage.md).
-
-Alternatively, you can also do a `git checkout` of the repo.
 
 ## Usage
 
@@ -284,7 +272,7 @@ All you need to do is set on your web server that all requests should be routed 
 try{
     $rest = Rest::initRest('ExampleApi');
     if($rest){
-        $rest->processRequest();
+        $rest->processRequest()->sendOutput();
     }    
 }catch (RestException $e){
     // handle the exception
@@ -351,12 +339,12 @@ number, or an alias. All requests that have this header will be mapped to that c
 X-Webiny-Rest-Version: 2.1
 ```
 
-### SecurityInterface
+### AccessInterface
 
-If you wish to implement your own security layer, you can implement the `Webiny\Component\Rest\Interfaces\SecurityInterface`.
+If you wish to implement your own security layer, you can implement the `Webiny\Component\Rest\Interfaces\AccessInterface`.
 
 ```php
-class FooService implements \Webiny\Component\Rest\Interfaces\SecurityInterface
+class FooService implements \Webiny\Component\Rest\Interfaces\AccessInterface
 {
 
     public function hasAccess($role)
@@ -368,6 +356,19 @@ class FooService implements \Webiny\Component\Rest\Interfaces\SecurityInterface
 
 The interface will ask you to define `hasAccess` method. This method takes only one parameter `$role`. This parameter
 contains the value defined in `@rest.role` annotation. The method should return either `true` or `false`, allowing or denying access to the user.
+
+Note that you still need to define the `Security` section in your REST configuration. The configuration should only contain the default required role. Don't define the `Firewall` attribute.
+
+```yaml
+Rest:
+    SomeOtherApi:
+        CompilePath: /var/www/Cache/Rest
+        Security:
+            Role: ROLE_ANONYMOUS
+```
+
+`ROLE_ANONYMOUS` allows non authenticated users to call the service. 
+You can overwrite the required role with the `@rest.role` annotation on a per-class and per-method basis.
 
 
 ### CacheKeyInterface
