@@ -10,7 +10,6 @@ namespace Webiny\Component\Rest\Compiler;
 use Webiny\Component\Rest\Parser\ParsedApi;
 use Webiny\Component\Rest\Parser\ParsedClass;
 use Webiny\Component\Rest\Parser\PathTransformations;
-use Webiny\Component\Rest\Rest;
 
 /**
  * Compiler transforms ParsedClass instances into a special array.
@@ -99,7 +98,7 @@ class Compiler
         ];
 
         $file = $cacheFileTemplate;
-        foreach ($map as $k => &$v) {
+        foreach ($map as $k => $v) {
             $file = str_replace('|' . $k . '|', $v, $file);
         }
 
@@ -129,7 +128,7 @@ class Compiler
         ];
 
         $file = $cacheFileTemplate;
-        foreach ($map as $k => &$v) {
+        foreach ($map as $k => $v) {
             $file = str_replace('|' . $k . '|', $v, $file);
         }
 
