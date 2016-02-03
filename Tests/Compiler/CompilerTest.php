@@ -9,6 +9,7 @@ namespace Webiny\Component\Rest\Tests\Compiler;
 
 use Webiny\Component\Annotations\Annotations;
 use Webiny\Component\Rest\Compiler\Cache;
+use Webiny\Component\Rest\Compiler\CacheDrivers\ArrayDriver;
 use Webiny\Component\Rest\Compiler\Compiler;
 use Webiny\Component\Rest\Parser\Parser;
 use Webiny\Component\Rest\Rest;
@@ -24,7 +25,7 @@ class CompilerTest extends \PHPUnit_Framework_TestCase
 
     public function testConstructor()
     {
-        $instance = new Compiler('ExampleApi', true);
+        $instance = new Compiler('ExampleApi', true, new Cache(new ArrayDriver()));
         $this->assertInstanceOf('Webiny\Component\Rest\Compiler\Compiler', $instance);
     }
 
@@ -33,25 +34,26 @@ class CompilerTest extends \PHPUnit_Framework_TestCase
         $parser = new Parser();
         $parserApi = $parser->parseApi('Webiny\Component\Rest\Tests\Mocks\MockApiClass', true);
 
-        $instance = new Compiler('ExampleApi', true);
+        $cache = new Cache(new ArrayDriver());
+        $instance = new Compiler('ExampleApi', true, $cache);
         $instance->writeCacheFiles($parserApi);
 
         // now let's validate what was written
         $cRoot = Rest::getConfig()->ExampleApi->CompilePath;
-        $cache = Cache::getCacheContent($cRoot . '/ExampleApi/Webiny_Component_Rest_Tests_Mocks_MockApiClass/v1.0.php');
+        $cache = $cache->getCacheContent('ExampleApi', 'Webiny\Component\Rest\Tests\Mocks\MockApiClass', 'current');
 
         $this->assertSame($cache['class'], 'Webiny\Component\Rest\Tests\Mocks\MockApiClass');
         $this->assertSame($cache['version'], '1.0');
         $this->assertInternalType('array', $cache['post']);
         $this->assertCount(1, $cache['post']);
         $this->assertCount(1, $cache['get']);
-        $this->assertNotFalse($cache['post']['some-method/([\\w-]+)/([\\w-]+)/([\\d]+)/']);
+        $this->assertNotFalse($cache['post']['some-method/([^/]+)/([^/]+)/([\\d]+)/']);
 
-        $method = $cache['post']['some-method/([\\w-]+)/([\\w-]+)/([\\d]+)/'];
+        $method = $cache['post']['some-method/([^/]+)/([^/]+)/([\\d]+)/'];
         $this->assertNotNull($method['default']);
         $this->assertSame('SECRET', $method['role']);
         $this->assertSame('someMethod', $method['method']);
-        $this->assertSame('some-method', $method['urlPattern']);
+        $this->assertSame('some-method/([^/]+)/([^/]+)/([\\d]+)/', $method['urlPattern']);
         $this->assertSame('3600', $method['cache']['ttl']);
         $this->assertSame(['expires' => '3600'], $method['header']['cache']);
         $this->assertSame('201', $method['header']['status']['success']);
@@ -79,7 +81,7 @@ class CompilerTest extends \PHPUnit_Framework_TestCase
         $this->assertFalse($method['default']);
         $this->assertSame(false, $method['role']);
         $this->assertSame('simpleMethod', $method['method']);
-        $this->assertSame('simple-method', $method['urlPattern']);
+        $this->assertSame('simple-method/', $method['urlPattern']);
         $this->assertSame(0, $method['cache']['ttl']);
         $this->assertSame(['expires' => 0], $method['header']['cache']);
         $this->assertSame(200, $method['header']['status']['success']);

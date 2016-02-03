@@ -34,13 +34,13 @@ class MethodParserTest extends \PHPUnit_Framework_TestCase
         $className = '\Webiny\Component\Rest\Tests\Mocks\MockApiClass';
         $reflection = new \ReflectionClass($className);
         $method = $reflection->getMethod('someMethod');
-        $instance = new MethodParser('\Webiny\Component\Rest\Tests\Mocks\MockApiClass', $method, true);
+        $instance = new MethodParser([new \ReflectionClass('\Webiny\Component\Rest\Tests\Mocks\MockApiClass')], $method, true);
         $parsedMethod = $instance->parse();
         $this->assertInstanceOf('\Webiny\Component\Rest\Parser\ParsedMethod', $parsedMethod);
 
         // validate parsed method
         $this->assertSame('someMethod', $parsedMethod->name);
-        $this->assertSame('some-method', $parsedMethod->urlPattern);
+        $this->assertSame('some-method/([^/]+)/([^/]+)/([\d]+)/', $parsedMethod->urlPattern);
         $this->assertSame('post', $parsedMethod->method);
         $this->assertSame('SECRET', $parsedMethod->role);
         $this->assertSame(['ttl' => '3600'], $parsedMethod->cache);
@@ -62,13 +62,13 @@ class MethodParserTest extends \PHPUnit_Framework_TestCase
         $className = '\Webiny\Component\Rest\Tests\Mocks\MockApiClass';
         $reflection = new \ReflectionClass($className);
         $method = $reflection->getMethod('simpleMethod');
-        $instance = new MethodParser('\Webiny\Component\Rest\Tests\Mocks\MockApiClass', $method, true);
+        $instance = new MethodParser([new \ReflectionClass('\Webiny\Component\Rest\Tests\Mocks\MockApiClass')], $method, true);
         $parsedMethod = $instance->parse();
         $this->assertInstanceOf('\Webiny\Component\Rest\Parser\ParsedMethod', $parsedMethod);
 
         // validate parsed method
         $this->assertSame('simpleMethod', $parsedMethod->name);
-        $this->assertSame('simple-method', $parsedMethod->urlPattern);
+        $this->assertSame('simple-method/', $parsedMethod->urlPattern);
         $this->assertSame('get', $parsedMethod->method);
         $this->assertFalse($parsedMethod->role);
         $this->assertSame(['ttl' => 0], $parsedMethod->cache);

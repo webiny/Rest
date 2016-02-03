@@ -22,24 +22,30 @@ class Compiler
     /**
      * @var string Name of the api configuration.
      */
-    private $_api;
+    private $api;
 
     /**
      * @var bool Should the class name and the method name be normalized.
      */
-    private $_normalize;
+    private $normalize;
 
+    /**
+     * @var Cache
+     */
+    private $cache;
 
     /**
      * Base constructor.
      *
      * @param string $api       Name of the api configuration.
      * @param bool   $normalize Should the class name and the method name be normalized.
+     * @param Cache  $cache     Current compiler cache instance.
      */
-    public function __construct($api, $normalize)
+    public function __construct($api, $normalize, Cache $cache)
     {
-        $this->_api = $api;
-        $this->_normalize = $normalize;
+        $this->api = $api;
+        $this->normalize = $normalize;
+        $this->cache = $cache;
     }
 
     /**
@@ -52,101 +58,25 @@ class Compiler
     {
         $writtenCacheFiles = [];
 
+        // first delete the cache
         foreach ($parsedApi->versions as $v => $parsedClass) {
-            $cacheFile = Cache::getCacheFilename($this->_api, $parsedApi->apiClass, $v);
+            $this->cache->deleteCache($this->api, $parsedApi->apiClass);
+        }
 
-            $this->_deleteExisting($cacheFile);
+        // then build the cache
+        foreach ($parsedApi->versions as $v => $parsedClass) {
+            $compileArray = $this->compileCacheFile($parsedClass, $v);
 
-            $compileArray = $this->_compileCacheFile($parsedClass, $v);
+            $this->cache->writeCacheFile($this->api, $parsedApi->apiClass, $v, $compileArray);
 
-            $this->_compileCacheTemplate($compileArray, $cacheFile, $v);
-
-            $writtenCacheFiles[$v] = [
-                'class'        => $parsedClass->class,
-                'version'      => $v,
-                'compileArray' => $compileArray,
-                'cacheFile'    => $cacheFile
-            ];
+            $writtenCacheFiles[$v] = $compileArray;
         }
 
         // write current and latest versions (just include return a specific version)
-        $this->_compileCacheAliasTemplate($writtenCacheFiles[$parsedApi->latestVersion], 'latest');
-        $this->_compileCacheAliasTemplate($writtenCacheFiles[$parsedApi->currentVersion], 'current');
-    }
-
-    /**
-     * Creates the cache file based on the cache template file.
-     *
-     * @param array  $compileArray Array holding information about the specific class and version.
-     * @param string $cacheFile    Cache file into which the content will be written.
-     * @param string $version      Version name.
-     */
-    private function _compileCacheTemplate($compileArray, $cacheFile, $version)
-    {
-        // template
-        $cacheFileTemplate = file_get_contents(__DIR__ . '/Templates/Cache.tpl');
-
-        // export array
-        $array = var_export($compileArray, true);
-
-        // build map based on template keys
-        $map = [
-            'export'    => $array,
-            'class'     => $compileArray['class'],
-            'version'   => 'v' . $version,
-            'buildDate' => date('D, d. M, Y H:i:s')
-        ];
-
-        $file = $cacheFileTemplate;
-        foreach ($map as $k => $v) {
-            $file = str_replace('|' . $k . '|', $v, $file);
-        }
-
-        file_put_contents($cacheFile, $file);
-    }
-
-    /**
-     * This method writes the alias cache files.
-     * Aliases are "current" and "latest" api versions.
-     * Aliases just include some other cache file.
-     *
-     * @param array  $compileArray Array holding different meta data regarding the api and the class.
-     * @param string $aliasVersion Name of the version.
-     */
-    private function _compileCacheAliasTemplate($compileArray, $aliasVersion)
-    {
-        // template
-        $cacheFileTemplate = file_get_contents(__DIR__ . '/Templates/CacheAlias.tpl');
-
-        // build map based on template keys
-        $map = [
-            'export'       => 'include "' . $compileArray['cacheFile'] . '"',
-            'class'        => $compileArray['class'],
-            'version'      => 'v' . $compileArray['version'],
-            'aliasVersion' => $aliasVersion,
-            'buildDate'    => date('D, d. M, Y H:i:s')
-        ];
-
-        $file = $cacheFileTemplate;
-        foreach ($map as $k => $v) {
-            $file = str_replace('|' . $k . '|', $v, $file);
-        }
-
-        $cacheFile = str_replace('v' . $compileArray['version'], $aliasVersion, $compileArray['cacheFile']);
-
-        file_put_contents($cacheFile, $file);
-    }
-
-    /**
-     * Deletes an existing cache file.
-     *
-     * @param string $cacheFile Cache file location.
-     */
-    private function _deleteExisting($cacheFile)
-    {
-        if (file_exists($cacheFile)) {
-            unlink($cacheFile);
-        }
+        $this->cache->writeCacheFile($this->api, $parsedApi->apiClass, 'latest',
+            $writtenCacheFiles[$parsedApi->latestVersion]);
+        $this->cache->writeCacheFile($this->api, $parsedApi->apiClass, 'current',
+            $writtenCacheFiles[$parsedApi->currentVersion]);
     }
 
     /**
@@ -158,7 +88,7 @@ class Compiler
      *
      * @return array The compiled array.
      */
-    private function _compileCacheFile(ParsedClass $parsedClass, $version)
+    private function compileCacheFile(ParsedClass $parsedClass, $version)
     {
         $compileArray = [];
         $compileArray['class'] = $parsedClass->class;
@@ -168,79 +98,28 @@ class Compiler
 
 
         foreach ($parsedClass->parsedMethods as $m) {
-            $url = $this->_buildUrlMatchPattern($m->name, $m->params);
-            $compileArray[$m->method][$url] = [
-                'default'     => $m->default,
-                'role'        => ($m->role) ? $m->role : false,
-                'method'      => $m->name,
-                'urlPattern'  => $m->urlPattern,
-                'cache'       => $m->cache,
-                'header'      => $m->header,
-                'rateControl' => $m->rateControl,
-                'params'      => []
+            $compileArray[$m->method][$m->urlPattern] = [
+                'default'         => $m->default,
+                'role'            => ($m->role) ? $m->role : false,
+                'method'          => $m->name,
+                'urlPattern'      => $m->urlPattern,
+                'resourceNaming'  => $m->resourceNaming,
+                'cache'           => $m->cache,
+                'header'          => $m->header,
+                'rateControl'     => $m->rateControl,
+                'params'          => []
             ];
 
             foreach ($m->params as $p) {
-                $compileArray[$m->method][$url]['params'][$p->name] = [
+                $compileArray[$m->method][$m->urlPattern]['params'][$p->name] = [
                     'required' => $p->required,
                     'type'     => $p->type,
-                    'default'  => $p->default
+                    'default'  => $p->default,
+                    'pattern'  => $p->matchPattern
                 ];
             }
         }
 
         return $compileArray;
     }
-
-    /**
-     * Builds the url match pattern for each of the method inside the api.
-     *
-     * @param string $methodName Method name.
-     * @param array  $parameters List of the ParsedParameter instances.
-     *
-     * @return string The url pattern.
-     */
-    private function _buildUrlMatchPattern($methodName, array $parameters)
-    {
-        $url = $methodName;
-        if ($this->_normalize) {
-            $url = PathTransformations::methodNameToUrl($methodName);
-        }
-
-        foreach ($parameters as $p) {
-            $matchType = $this->_getParamMatchType($p->type);
-            $url = $url . '/' . $matchType;
-        }
-
-        return $url . '/';
-    }
-
-    /**
-     * Returns a different match pattern, based on the given $paramType.
-     *
-     * @param string $paramType Parameter type name.
-     *
-     * @return string Match pattern.
-     */
-    private function _getParamMatchType($paramType)
-    {
-        switch ($paramType) {
-            case 'string':
-                return '([\w-]+)';
-                break;
-            case 'bool':
-                return '(0|1|true|false)';
-                break;
-            case 'integer':
-                return '([\d]+)';
-                break;
-            case 'float':
-                return '([\d.]+)';
-                break;
-            default:
-                return '([\w-]+)';
-                break;
-        }
-    }
-
 }

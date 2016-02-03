@@ -17,6 +17,8 @@ use Webiny\Component\Router\Matcher\MatchedRoute;
 use Webiny\Component\Router\Route\Route;
 use Webiny\Component\Router\RouterTrait;
 use Webiny\Component\StdLib\ComponentTrait;
+use Webiny\Component\StdLib\Exception\Exception;
+use Webiny\Component\StdLib\FactoryLoaderTrait;
 use Webiny\Component\StdLib\StdObjectTrait;
 
 /**
@@ -26,7 +28,7 @@ use Webiny\Component\StdLib\StdObjectTrait;
  */
 class Rest
 {
-    use ComponentTrait, RouterTrait, HttpTrait, StdObjectTrait;
+    use ComponentTrait, RouterTrait, HttpTrait, StdObjectTrait, FactoryLoaderTrait;
 
     /**
      * Environment constants
@@ -35,43 +37,66 @@ class Rest
     const ENV_PRODUCTION = 'production';
 
     /**
+     * Default cache drivers
+     */
+    const DEV_CACHE_DRIVER = '\Webiny\Component\Rest\Compiler\CacheDrivers\ArrayDriver';
+    const PROD_CACHE_DRIVER = '\Webiny\Component\Rest\Compiler\CacheDrivers\FilesystemDriver';
+
+    /**
      * @var string Name of the api configuration.
      */
-    private $_api;
+    private $api;
 
     /**
      * @var string Environment, can either be 'development' or 'production'.
      */
-    private $_environment = 'production';
+    private $environment = 'production';
 
     /**
      * @var mixed|\Webiny\Component\Config\ConfigObject Rest api specific configuration.
      */
-    private $_config;
+    private $config;
 
     /**
      * @var string Name of the class that has been registered.
      */
-    private $_class;
+    private $class;
 
     /**
      * @var bool Should the url parts be normalized.
      */
-    private $_normalize;
+    private $normalize;
+
+    /**
+     * @var \Webiny\Component\Rest\Compiler\Cache
+     */
+    private $cacheInstance;
+
+    /**
+     * @var string Url passed from initRest method.
+     */
+    private static $url;
+
+    /**
+     * @var string HTTP method passed from the initRest method.
+     */
+    private static $method;
 
 
     /**
      * Initializes the current Rest configuration, tries to match the current URL with the defined Path.
      * If match was successful, an instance of Rest class is returned, otherwise false.
      *
-     * @param string $api Api configuration Name
-     * @param string $url Url on which the to match. Leave blank to use the current url.
+     * @param string $api    Api configuration Name
+     * @param string $url    Url on which the to match. Leave blank to use the current url.
+     * @param string $method Name of the HTTP method that will be used to match the request.
+     *                       Leave blank to use the method from the current HTTP request.
      *
      * @return bool|Rest
      * @throws RestException
      * @throws \Webiny\Component\StdLib\StdObject\StringObject\StringObjectException
      */
-    static public function initRest($api, $url = '')
+    public static function initRest($api, $url = '', $method = '')
     {
         $config = self::getConfig()->get($api, false);
 
@@ -106,8 +131,7 @@ class Rest
             $result = self::router()->match(self::str(self::httpRequest()->getCurrentUrl(true)->getPath())
                                                 ->trimRight('/')
                                                 ->append('/_w_rest/_foo')
-                                                ->val()
-            );
+                                                ->val());
         } else {
             $result = self::router()->match(self::str($url)->trimRight('/')->append('/_w_rest/_foo')->val());
         }
@@ -116,7 +140,9 @@ class Rest
             return false;
         }
 
-        return self::_processRouterResponse($result, $config, $api);
+        self::$url = $url;
+        self::$method = $method;
+        return self::processRouterResponse($result, $config, $api);
     }
 
     /**
@@ -130,7 +156,7 @@ class Rest
      * @return Rest
      * @throws \Webiny\Component\StdLib\StdObject\StringObject\StringObjectException
      */
-    static private function _processRouterResponse(MatchedRoute $matchedRoute, ConfigObject $config, $api)
+    private static function processRouterResponse(MatchedRoute $matchedRoute, ConfigObject $config, $api)
     {
         // based on the matched route create the class name
         $className = self::str($config->get('Router.Class'))->trimLeft('\\')->prepend('\\');
@@ -158,18 +184,19 @@ class Rest
      */
     public function __construct($api, $class)
     {
-        $this->_config = $this->getConfig()->get($api, false);
-        if (!$this->_config) {
+        $this->config = $this->getConfig()->get($api, false);
+        if (!$this->config) {
             throw new RestException('Configuration for "' . $api . '" not found.');
         }
 
-        $this->setEnvironment($this->_config->get('Environment', 'production'));
+        $this->setEnvironment($this->config->get('Environment', 'production'));
+        $this->initializeCache();
 
-        $this->_api = $api;
-        $this->_class = $class;
-        $this->_normalize = $this->_config->get('Router.Normalize', false);
+        $this->api = $api;
+        $this->class = $class;
+        $this->normalize = $this->config->get('Router.Normalize', false);
 
-        $this->_registerClass();
+        $this->registerClass();
     }
 
     /**
@@ -186,7 +213,7 @@ class Rest
             throw new RestException('Unknown environment "' . $env . '".');
         }
 
-        $this->_environment = $env;
+        $this->environment = $env;
     }
 
     /**
@@ -196,7 +223,7 @@ class Rest
      */
     public function getEnvironment()
     {
-        return $this->_environment;
+        return $this->environment;
     }
 
     /**
@@ -208,11 +235,23 @@ class Rest
     public function processRequest()
     {
         try {
-            $router = new Router($this->_api, $this->_class, $this->_normalize);
+            $router = new Router($this->api, $this->class, $this->normalize, $this->cacheInstance);
+
+            // check if url is set via the initRest method
+            if (!empty(self::$url)) {
+                $router->setUrl(self::$url);
+            }
+
+            // check if the method vas set via initRest method
+            if (!empty(self::$method)) {
+                $router->setHttpMethod(self::$method);
+            }
 
             return $router->processRequest();
         } catch (\Exception $e) {
-            throw new RestException('Unable to process request for class "' . $this->_class . '". ' . $e->getMessage());
+            $exception = new RestException('Unable to process request for class "' . $this->class . '". ' . $e->getMessage());
+            $exception->setRequestedClass($this->class);
+            throw $exception;
         }
     }
 
@@ -221,9 +260,9 @@ class Rest
      *
      * @return bool
      */
-    private function _isDevelopment()
+    private function isDevelopment()
     {
-        return ($this->_environment == 'development') ? true : false;
+        return ($this->environment == 'development') ? true : false;
     }
 
     /**
@@ -231,18 +270,16 @@ class Rest
      *
      * @throws RestException
      */
-    private function _registerClass()
+    private function registerClass()
     {
         try {
-            if (!Cache::isCacheValid($this->_api, $this->_class) || $this->_isDevelopment()) {
-                try {
-                    $this->_parseClass();
-                } catch (\Exception $e) {
-                    throw new RestException('Error registering class "' . $this->_class . '". ' . $e->getMessage());
-                }
+            if (!$this->cacheInstance->isCacheValid($this->api, $this->class) || $this->isDevelopment()) {
+                $this->parseClass();
             }
         } catch (\Exception $e) {
-            throw new RestException('Unable to register class "' . $this->_class . '". ' . $e->getMessage());
+            $exception = new RestException('Unable to register class "' . $this->class . '". ' . $e->getMessage());
+            $exception->setRequestedClass($this->class);
+            throw $exception;
         }
     }
 
@@ -250,13 +287,40 @@ class Rest
      * Calls the Parser to parse the class and
      * then Compiler to create a compiled cache file of the parsed class.
      */
-    private function _parseClass()
+    private function parseClass()
     {
         $parser = new Parser();
-        $parsedApi = $parser->parseApi($this->_class, $this->_normalize);
+        $parsedApi = $parser->parseApi($this->class, $this->normalize);
 
         // in development we always write cache
-        $writer = new Compiler($this->_api, $this->_normalize);
+        $writer = new Compiler($this->api, $this->normalize, $this->cacheInstance);
         $writer->writeCacheFiles($parsedApi);
+    }
+
+    /**
+     * Initializes the compiler cache driver.
+     *
+     * @throws Exception
+     * @throws \Exception
+     */
+    private function initializeCache()
+    {
+        // get driver
+        if (!($driver = $this->config->get('CompilerCacheDriver', false))) {
+            // default driver
+            if ($this->isDevelopment()) {
+                $driver = self::DEV_CACHE_DRIVER;
+            } else {
+                $driver = self::PROD_CACHE_DRIVER;
+            }
+        }
+
+        // create driver instance
+        try {
+            $instance = $this->factory($driver, '\Webiny\Component\Rest\Compiler\CacheDrivers\CacheDriverInterface');
+            $this->cacheInstance = new Cache($instance);
+        } catch (Exception $e) {
+            throw $e;
+        }
     }
 }

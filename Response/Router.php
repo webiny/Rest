@@ -10,7 +10,6 @@ namespace Webiny\Component\Rest\Response;
 use Webiny\Component\Http\HttpTrait;
 use Webiny\Component\Rest\Compiler\Cache as CompilerCache; // alias set due to problems with phpunit
 use Webiny\Component\Rest\Parser\PathTransformations;
-use Webiny\Component\Rest\Rest;
 use Webiny\Component\Rest\RestException;
 use Webiny\Component\StdLib\StdLibTrait;
 
@@ -32,7 +31,7 @@ class Router
     /**
      * @var array List of supported request methods.
      */
-    private static $_supportedRequestTypes = [
+    private static $supportedRequestTypes = [
         'get',
         'post',
         'put',
@@ -43,60 +42,62 @@ class Router
     /**
      * @var string Name of the rest api configuration.
      */
-    private $_api;
+    private $api;
 
     /**
      * @var string Name of the rest api class.
      */
-    private $_class;
-
-    /**
-     * @var string Path to the compiled cache file.
-     */
-    private $_cacheFile;
+    private $class;
 
     /**
      * @var string Holds the url upon which we will try to match a service in the registered class.
      */
-    private $_url;
+    private $url;
 
     /**
      * @var string Holds the HTTP method that will be used to match the service in the registered class.
      */
-    private $_method;
+    private $method;
 
     /**
      * @var string Should we normalize the url parts, or leave them as they are
      */
-    private $_normalize;
+    private $normalize;
+
+    /**
+     * @var CompilerCache
+     */
+    private $compilerCache;
 
 
     /**
      * Base constructor.
      *
-     * @param string $api   Name of the rest api configuration.
-     * @param string $class Name of the rest api class.
-     * @param bool $normalize Should the url parts be normalized or not.
+     * @param string        $api           Name of the rest api configuration.
+     * @param string        $class         Name of the rest api class.
+     * @param bool          $normalize     Should the url parts be normalized or not.
+     * @param CompilerCache $compilerCache Current compiler cache instance.
      */
-    public function __construct($api, $class, $normalize)
+    public function __construct($api, $class, $normalize, CompilerCache $compilerCache)
     {
-        $this->_api = $api;
-        $this->_class = $class;
-        $this->_normalize = $normalize;
+        $this->api = $api;
+        $this->class = $class;
+        $this->normalize = $normalize;
+        $this->compilerCache = $compilerCache;
     }
 
     /**
      * Set the url.
      *
-     * NOTE: You don't really need to use this method, since getUrl returns the current url, which is what you need in
-     * 99% of use-cases. This method is mostly so that we can do better unit and functional testing of this class.
+     * In case a fixed url string is passed directly into the Rest instance, using this method the url will be passed
+     * to the router.
      *
      * @param string $url Url upon which we will try to match a service in the registered class.
      */
     public function setUrl($url)
     {
         $url = $this->url($url)->getPath();
-        $this->_url = $this->str($url)->trimRight('/')->val() . '/';
+        $this->url = $this->str($url)->trimRight('/')->val() . '/';
     }
 
     /**
@@ -106,12 +107,14 @@ class Router
      */
     public function getUrl()
     {
-        if (empty($this->_url)) {
+        if (empty($this->url)) {
             $url = $this->httpRequest()->getCurrentUrl(true)->getPath();
-            $this->_url = $this->str($url)->trimRight('/')->val() . '/';
+            // we need to have the trailing slash because of the match inside matchRequest
+            // and also when matching the default method, we can do an incorrect match if we don't have the start and end slash
+            $this->url = $this->str($url)->trimRight('/')->val() . '/';
         }
 
-        return $this->_url;
+        return $this->url;
     }
 
     /**
@@ -124,11 +127,11 @@ class Router
     public function setHttpMethod($method)
     {
         $method = strtolower($method);
-        if (!in_array($method, self::$_supportedRequestTypes)) {
+        if (!in_array($method, self::$supportedRequestTypes)) {
             throw new RestException('The provided HTTP is no supported: "' . $method . '".');
         }
 
-        $this->_method = $method;
+        $this->method = $method;
     }
 
     /**
@@ -138,11 +141,11 @@ class Router
      */
     public function getMethod()
     {
-        if (empty($this->_method)) {
-            $this->_method = strtolower($this->httpRequest()->getRequestMethod());
+        if (empty($this->method)) {
+            $this->method = strtolower($this->httpRequest()->getRequestMethod());
         }
 
-        return $this->_method;
+        return $this->method;
     }
 
     /**
@@ -153,14 +156,13 @@ class Router
     public function processRequest()
     {
         // get version cache file
-        $version = $this->_getVersion();
-        $this->_cacheFile = CompilerCache::getCacheFilename($this->_api, $this->_class, $version);
+        $version = $this->getVersion();
 
-        // get cache file contents
-        $classData = CompilerCache::getCacheContent($this->_cacheFile);
+        // get class data from the compiled cache files
+        $classData = $this->compilerCache->getCacheContent($this->api, $this->class, $version);
 
         // match request
-        return $this->_matchRequest($classData);
+        return $this->matchRequest($classData);
     }
 
     /**
@@ -168,51 +170,57 @@ class Router
      *
      * @return string
      */
-    private function _getVersion()
+    private function getVersion()
     {
         return $this->httpRequest()->header(self::HEADER_VERSION, 'current');
     }
 
     /**
-     * Analyzes the request and tries to match a api class method.
+     * Analyzes the request and tries to match an api method.
      *
      * @param array $classData Class array form compiled cache file.
      *
      * @return CallbackResult
-     * @throws \Webiny\Component\Rest\RestException
+     * @throws RestException
+     * @throws \Exception
      */
-    private function _matchRequest(&$classData)
+    private function matchRequest(&$classData)
     {
         if (!is_array($classData)) {
             throw new RestException("Invalid class cache data.");
         }
 
         // build the request url upon which we will do the matching
-        $url = $this->getUrl();
+        try {
+            $url = $this->getUrl();
+        } catch (\Exception $e) {
+            throw $e;
+        }
+
 
         // get request method
         $method = $this->getMethod();
-        if (!in_array($method, self::$_supportedRequestTypes)) {
+        if (!in_array($method, self::$supportedRequestTypes)) {
             throw new RestException('Unsupported request method: "' . $method . '"');
         }
 
         $callbacks = (empty($classData[$method])) ? [] : $classData[$method];
 
-        // validate that we have the ending class name in the url
+        // match array
         $matchedMethod = [
             'methodData'        => false,
-            'matchedParameters' => false,
-            'methodNameMatched' => false
+            'matchedParameters' => false
         ];
 
-        $classUrl = PathTransformations::classNameToUrl($this->_class, $this->_normalize);
+        // validate that we have the ending class name in the url
+        $classUrl = PathTransformations::classNameToUrl($this->class, $this->normalize);
         if (strpos($url, '/' . $classUrl . '/') !== false) {
-            $matchedMethod = $this->_matchMethod($callbacks, $url, $classUrl);
+            $matchedMethod = $this->matchMethod($callbacks, $url);
 
             // if method was not matched
-            if (!$matchedMethod['methodData'] && !$matchedMethod['methodNameMatched']) {
+            if (!$matchedMethod['methodData']) {
                 // if no method was matched, let's try to match a default method
-                $matchedMethod = $this->_matchDefaultMethod($callbacks, $url, $classUrl);
+                $matchedMethod = $this->matchDefaultMethod($callbacks, $url, $classUrl);
             }
         }
 
@@ -223,8 +231,7 @@ class Router
         $requestBag->setClassData($classData)
                    ->setMethodData($methodData)
                    ->setMethodParameters($matchedParameters)
-                   ->setApi($this->_api)
-                   ->setCompileCacheFile($this->_cacheFile);
+                   ->setApi($this->api);
 
         $callback = new Callback($requestBag);
 
@@ -236,40 +243,32 @@ class Router
      *
      * @param array  $callbacks Available callbacks in the current class.
      * @param string $url       Url upon we will do the match
-     * @param string $classUrl  Class name converted to url parameter.
-     *
      *
      * @return array
      */
-    private function _matchMethod($callbacks, $url, $classUrl)
+    private function matchMethod($callbacks, $url)
     {
         // match a callback based on url pattern
         $methodData = false;
         $matchedParameters = false;
-        $methodNameMatched = false;
 
         // match method
         foreach ($callbacks as $pattern => $data) {
-            // just to speedup and optimise, we first use strpos to match the method name
-            if (strpos($url, $classUrl . '/' . $data['urlPattern'] . '/') !== false) {
-                $methodNameMatched = true;
-                if (($matchedParameters = $this->_doesPatternMatch($pattern, $data, $url)) !== false) {
+            if (($matchedParameters = $this->doesPatternMatch($pattern, $data, $url)) !== false) {
+                $methodData = $data;
+                break;
+            } else if ($data['resourceNaming'] === false) {
+                $matchedParameters = $this->tryMatchingOptionalParams($pattern, $data, $url);
+                if ($matchedParameters) {
                     $methodData = $data;
                     break;
-                } else {
-                    $matchedParameters = $this->_tryMatchingOptionalParams($pattern, $data, $url);
-                    if ($matchedParameters) {
-                        $methodData = $data;
-                        break;
-                    }
                 }
             }
         }
 
         return [
             'methodData'        => $methodData,
-            'matchedParameters' => $matchedParameters,
-            'methodNameMatched' => $methodNameMatched
+            'matchedParameters' => $matchedParameters
         ];
     }
 
@@ -278,11 +277,10 @@ class Router
      *
      * @param array  $callbacks Available callbacks in the current class.
      * @param string $url       Url upon we will do the match
-     * @param string $classUrl  Class name converted to url parameter.
      *
      * @return array
      */
-    private function _matchDefaultMethod($callbacks, $url, $classUrl)
+    private function matchDefaultMethod($callbacks, $url, $classUrl)
     {
         // match a callback based on url pattern
         $methodData = false;
@@ -290,17 +288,21 @@ class Router
 
         // match method
         foreach ($callbacks as $pattern => $data) {
-            if ($data['default'] !== false) {
+            if ($data['default'] !== false && $data['resourceNaming'] === false) {
                 // for default method we need to remove the method name from the pattern
-                $pattern = $classUrl . '/' . str_replace($data['urlPattern'] . '/', '', $pattern);
+                $methodUrl = $data['method'];
+                if ($this->normalize) {
+                    $methodUrl = PathTransformations::methodNameToUrl($methodUrl);
+                }
+                $pattern = $classUrl . '/' . str_replace($methodUrl . '/', '', $pattern);
 
-                if (($matchedParameters = $this->_doesPatternMatch($pattern, $data, $url)) !== false) {
+                if (($matchedParameters = $this->doesPatternMatch($pattern, $data, $url)) !== false) {
                     $methodData = $data;
                     break;
                 } else {
                     $methodName = $data['method'];
                     $data['method'] = $classUrl;
-                    $matchedParameters = $this->_tryMatchingOptionalParams($pattern, $data, $url);
+                    $matchedParameters = $this->tryMatchingOptionalParams($pattern, $data, $url);
                     $data['method'] = $methodName;
                     if ($matchedParameters) {
                         $methodData = $data;
@@ -325,12 +327,12 @@ class Router
      *
      * @return bool True is returned if $pattern matches $url, otherwise false.
      */
-    private function _doesPatternMatch($pattern, $data, $url)
+    private function doesPatternMatch($pattern, $data, $url)
     {
+
         // we need regex only if we need to match some parameters
         if (count($data['params']) <= 0) {
-            $endingUrl = substr($url, strpos($url, $pattern));
-
+            $endingUrl = substr($url, strrpos($url, $pattern));
             if ($endingUrl == $pattern) {
                 return [];
             };
@@ -350,6 +352,7 @@ class Router
 
     /**
      * This method adds the default values for missing parameters and tries to do the match again.
+     * Note: this works only with standard urls and not with resource naming
      *
      *
      * @param string $pattern Pattern that will be used for matching.
@@ -358,7 +361,7 @@ class Router
      *
      * @return bool True is returned if $pattern matches $url, otherwise false.
      */
-    private function _tryMatchingOptionalParams($pattern, $data, $url)
+    private function tryMatchingOptionalParams($pattern, $data, $url)
     {
         // first we check if we have any default params
         $hasDefaultParams = false;
@@ -367,22 +370,18 @@ class Router
                 $hasDefaultParams = true;
             }
         }
-
         if (!$hasDefaultParams) {
             return false;
         }
-
         // get parameters that we already have in the url
         $methodUrlName = $data['method'];
-        if($this->_normalize){
+        if ($this->normalize) {
             $methodUrlName = PathTransformations::methodNameToUrl($methodUrlName);
         }
-
         $urlParts = explode('/', $url);
         $numIncludedParams = count($urlParts) - (array_search($methodUrlName, $urlParts) + 2);
         $numAddedParams = 0;
         $requiredParamNum = count($data['params']);
-
         $loopIndex = 0;
         foreach ($data['params'] as $p) {
             if ($loopIndex >= $numIncludedParams) {
@@ -393,11 +392,9 @@ class Router
             }
             $loopIndex++;
         }
-
         if (($numIncludedParams + $numAddedParams) != $requiredParamNum) {
             return false;
         }
-
-        return $this->_doesPatternMatch($pattern, $data, $url);
+        return $this->doesPatternMatch($pattern, $data, $url);
     }
 }

@@ -20,37 +20,44 @@ class RestErrorException extends ExceptionAbstract
     /**
      * @var string Error message.
      */
-    private $_message = '';
+    protected $message = '';
 
     /**
      * @var string Error description.
      */
-    private $_description = '';
+    protected $description = '';
 
     /**
      * @var string Error code.
      */
-    private $_code = '';
+    protected $code = '';
+
+    /**
+     * @var int Http response code that should be send with the error. Default is 404.
+     */
+    protected $responseCode = 404;
 
     /**
      * @var array Additional error messages. Useful if you wish to return a validation error, this can be used to
      *            store errors per-field.
      */
-    private $_errors = [];
+    protected $errors = [];
 
 
     /**
      * Base constructor.
      *
-     * @param string $message     Error message.
-     * @param string $description Error description.
-     * @param string $code        Error code.
+     * @param string $message      Error message.
+     * @param string $description  Error description.
+     * @param string $code         Error code.
+     * @param int    $responseCode Http response code that should be send with the error. Default is 404.
      */
-    public function __construct($message, $description = '', $code = '')
+    public function __construct($message, $description = '', $code = '', $responseCode = 404)
     {
-        $this->_message = $message;
-        $this->_description = $description;
-        $this->_code = $code;
+        $this->message = $message;
+        $this->description = $description;
+        $this->code = $code;
+        $this->responseCode = $responseCode;
     }
 
     /**
@@ -60,7 +67,7 @@ class RestErrorException extends ExceptionAbstract
      */
     public function addError(array $error)
     {
-        $this->_errors[] = $error;
+        $this->errors[] = $error;
     }
 
     /**
@@ -70,7 +77,7 @@ class RestErrorException extends ExceptionAbstract
      */
     public function getErrors()
     {
-        return $this->_errors;
+        return $this->errors;
     }
 
     /**
@@ -80,7 +87,7 @@ class RestErrorException extends ExceptionAbstract
      */
     public function getErrorMessage()
     {
-        return $this->_message;
+        return $this->message;
     }
 
     /**
@@ -90,7 +97,7 @@ class RestErrorException extends ExceptionAbstract
      */
     public function getErrorDescription()
     {
-        return $this->_description;
+        return $this->description;
     }
 
     /**
@@ -100,6 +107,22 @@ class RestErrorException extends ExceptionAbstract
      */
     public function getErrorCode()
     {
-        return $this->_code;
+        return $this->code;
+    }
+
+    /**
+     * @param $responseCode Http response code that should be send with the error. Default is 404.
+     */
+    public function setResponseCode($responseCode)
+    {
+        $this->responseCode = $responseCode;
+    }
+
+    /**
+     * @return int Returns the http response code.
+     */
+    public function getResponseCode()
+    {
+        return $this->responseCode;
     }
 }

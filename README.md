@@ -16,6 +16,7 @@ For additional versions of the package, visit the [Packagist page](https://packa
 
 Some of the built-in features:
 - supports **GET**, **POST**, **PUT**, **PATCH** and **DELETE** requests
+- resource naming (via `@rest.url` annotation)
 - integrated version management system
 - effective Rate Control mechanism
 - services are configured using annotations
@@ -46,6 +47,13 @@ Rest:
     ExampleApi:
 		CompilePath: /var/tmp
 		Router:
+            Class: \Foo\Bar\MyServices\{foo}\{bar}
+            Path: /services/{test}/{foo}/{mock}/{bar}
+            Normalize: true
+    MiddlewareApi:
+        CompilePath: /var/tmp
+        Middleware: \My\Custom\Handler
+        Router:
             Class: \Foo\Bar\MyServices\{foo}\{bar}
             Path: /services/{test}/{foo}/{mock}/{bar}
             Normalize: true
@@ -115,6 +123,12 @@ Note that the rate control mechanism requires that you have `Cache` specified on
 The value of `Environment` attribute can either be 'production' or 'development'. The difference is that in development
 mode we constantly rebuild the compiled cache files, we also output special debug response headers, and JSON output uses pretty format.
 
+#### **Middleware**
+If this parameter is set, it should point to your class that implements `MiddlewareInterface`. This gives you control over execution of your REST service method.
+Everything until and after the execution of the service is done by the component. The component passes the `RequestBag` to your middleware, and it is up to you 
+how you will execute the method, maybe perform additional checks, or some custom business logic. Whatever you do, the return value will be passed directly to 
+the REST component and will be used as a service result. 
+
 ## Class and method annotations
 
 ```php
@@ -130,9 +144,9 @@ class FooService
      * @rest.cache.ttl 100
      * @rest.header.cache.expires 3600
      * @rest.header.status.success 200
-     * @rest.header.status.error 401
      * @rest.header.status.errorMessage No Author for specified id.
      * @rest.rateControl.ignore
+     * @rest.url some/custom/url/{param1}/param2/{param2}/other/{param3}
      *
      * @param integer $param1 Some param.
      * @param string $param2 Other param.
@@ -151,7 +165,12 @@ of your service. All the REST component annotations have a `rest` namespace.
 All the annotations can be defined on a class level, making them default to methods, and on the method level you can
 overwrite them. There are no required annotations.
 
-The following annotations are available:
+**When one class extends another, where the child class is actually your REST API, the parent class automatically
+passes, its class and method, annotations the child class, so make sure when overwriting methods, that you also 
+overwrite the annotations, if necessary.**
+
+
+### The following annotations are available:
 
 #### **@rest.method**
 
@@ -204,7 +223,6 @@ seconds. Note that this feature requires that you have a `Cache` service defined
 There are several options in the `header` section that you can control:
 - `cache.expires`: defines what ttl will be set in `Expires` header that component will send to the browser. If you don't set it, it will be set to '-1' telling the browser to always grab fresh content from the server.
 - `status.success`: what response status code should be returned if the request was successful. By default **200 - OK** is returned, with an exception of **201 - Created** for **POST** requests.
-- `status.error`: same as `status.success`, but in a case of an error. By default the system returns a **404 - Not Found**.
 - `status.errorMessage`: defines a custom error message that will be attached to the response status code.
 
 
@@ -228,6 +246,19 @@ This annotation requires that you define the `Security` section in your configur
 ```
 
 This flag marks that rate control will not be applied to that method.
+
+#### **@rest.url**
+
+```php
+/**
+ * @rest.url some/custom/url/{param1}/param2/{param2}/other/{param3}
+ */
+```
+This annotation provides the resource naming feature by specifying a custom url that will be used in the url matching, 
+instead of the `method name`.
+**Note:** When using resource naming, you cannot use `@rest.default` annotation on that method, and also you cannot 
+specify optional parameters.
+
 
 ## Routing and accessing the APIs
 
@@ -427,6 +458,7 @@ In the trait you will find the next methods:
 - `restGetPage`: returns the value of `_page` query parameter
 - `restGetPerPage`: returns the value of `_perPage` query parameter (has a built-in limit of 1.000)
 - `restGetSortField`: returns the sort field name from the `_sort` query parameter
+- `restGetSortFields`: returns the sort fields array, parsed from the `_sort` query parameter
 - `restGetSortDirection`: returns the sort direction from the `_sort` query parameter
 - `restGetFields`: returns the value of `_fields` query parameter
 
@@ -438,6 +470,7 @@ The returned values would be as following:
 - `restGetPerPage`: 10
 - `restGetSortField`: Title
 - `restGetSortDirection`: 1 (if we would have '-' in front of the field name, the function would return -1)
+- `restGetSortFields`: ['Title' => 1]
 - `restGetFields`: id,title,author,slug
 
 ## Return values
@@ -509,7 +542,6 @@ The additional headers are as following:
 
 - `X-Webiny-Rest-Class`: name of the used API class (useful to know which class was used based on the version)
 - `X-Webiny-Rest-ClassVersion`: actual API version
-- `X-Webiny-Rest-CompileCacheFile`: absolute path to the compiled cache file (it's useful to refer to that file for additional information)
 - `X-Webiny-Rest-Method`: which HTTP request method was used
 - `X-Webiny-Rest-RateControl-Limit`: the limit of rate control (also present in the production mode)
 - `X-Webiny-Rest-RateControl-Remaining`: the remaining number of requests, until the limit is reached (also present in the production mode)
@@ -520,12 +552,28 @@ Here is typical example output:
 ```txt
 X-Webiny-Rest-Class:TestRestApiServiceNew
 X-Webiny-Rest-ClassVersion:2.0
-X-Webiny-Rest-CompileCacheFile:/var/www/projects/webiny/Public/Cache/Rest/InternalApi/TestRestApiService/current.php
 X-Webiny-Rest-Method:GET
 X-Webiny-Rest-RateControl-Limit:10
 X-Webiny-Rest-RateControl-Remaining:8
 X-Webiny-Rest-RateControl-Reset:1408414512
 X-Webiny-Rest-RequestedRole:SECRET_ROLE
+```
+
+## Compiler cache
+
+The component reads the api classes and creates an array that contains different information about the api services 
+contained within that class. Based on the component environment, that array will be saved. If the environment is `development` 
+the cached array will be stored in memory inside a static array. If the environment is `production` the array will be written 
+to the disk, using the `CompilePath`.
+
+If you wish to create your own compiler cache class, and write, for example to a Redis database, you just need to create a 
+class and implement `\Webiny\Component\Rest\Compiler\CacheDrivers\CacheDriverInterface` and define the path to the class
+inside your Rest component config, like this:
+
+```yaml
+Rest:
+    ExampleApi:
+        CompilerCacheDriver: '\Vendor\Namespace\Class'
 ```
 
 Resources

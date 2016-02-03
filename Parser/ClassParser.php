@@ -19,28 +19,30 @@ class ClassParser
     /**
      * @var \ReflectionClass A \ReflectionClass instance of the $class.
      */
-    private $_reflectionClass;
+    private $reflectionClass;
 
     /**
      * @var string Fully qualified name of the api class.
      */
-    private $_class;
+    private $class;
 
     /**
      * @var ParsedClass
      */
-    private $_parsedClass;
+    private $parsedClass;
 
     /**
      * @var bool Should the class name and the method name be normalized.
      */
-    private $_normalize;
+    private $normalize;
+
+    private $parentClasses;
 
 
     /**
      * Base constructor.
      *
-     * @param string $class Fully qualified name of the api class.
+     * @param string $class     Fully qualified name of the api class.
      * @param bool   $normalize Should the class name and the method name be normalized.
      *
      * @throws RestException
@@ -49,23 +51,31 @@ class ClassParser
     {
         // first we check how many version the api has
         try {
-            $this->_reflectionClass = new \ReflectionClass($class);
+            $this->reflectionClass = new \ReflectionClass($class);
         } catch (\Exception $e) {
             throw new RestException('Parser: Unable to parse class "' . $class . '". ' . $e->getMessage());
         }
 
-        $this->_normalize = $normalize;
-        $this->_class = $class;
-        $this->_parsedClass = new ParsedClass($class);
+        $this->normalize = $normalize;
+        $this->class = $class;
+        $this->parsedClass = new ParsedClass($class);
+
+        // list parent classes
+        $class = $this->reflectionClass;
+        $this->parentClasses[] = $this->reflectionClass;
+        while ($parent = $class->getParentClass()) {
+            $this->parentClasses[] = $parent;
+            $class = $parent;
+        }
 
         // parse class
-        $this->_parseClass();
+        $this->parseClass();
 
         // parse methods
-        $this->_parseMethods();
+        $this->parseMethods();
 
         // cleanup
-        unset($this->_reflectionClass);
+        unset($this->reflectionClass);
     }
 
     /**
@@ -75,23 +85,29 @@ class ClassParser
      */
     public function getParsedClass()
     {
-        return $this->_parsedClass;
+        return $this->parsedClass;
     }
 
     /**
      * Internal method that does the actual parsing of class properties.
      */
-    private function _parseClass()
+    private function parseClass()
     {
         // check which interfaces are implemented
-        $interfaces = $this->_reflectionClass->getInterfaceNames();
+        $interfaces = [];
+        foreach ($this->parentClasses as $pc) {
+            $interfaces = array_merge($interfaces,
+                $pc->getInterfaceNames()); // returns only the interfaces that the current class implements
+        }
+        $interfaces = array_unique($interfaces);
+
         foreach ($interfaces as $i) {
             if ($i == 'Webiny\Component\Rest\Interfaces\AccessInterface') {
-                $this->_parsedClass->accessInterface = true;
+                $this->parsedClass->accessInterface = true;
             }
 
             if ($i == 'Webiny\Component\Rest\Interfaces\CacheKeyInterface') {
-                $this->_parsedClass->cacheKeyInterface = true;
+                $this->parsedClass->cacheKeyInterface = true;
             }
         }
     }
@@ -101,19 +117,19 @@ class ClassParser
      *
      * @throws RestException
      */
-    private function _parseMethods()
+    private function parseMethods()
     {
-        $methods = $this->_reflectionClass->getMethods();
+        $methods = $this->reflectionClass->getMethods(); // this still returns the methods for all parent classes
         if (!is_array($methods) || count($methods) < 1) {
-            throw new RestException('Parser: The class "' . $this->_class . '" doesn\'t have any methods defined.');
+            throw new RestException('Parser: The class "' . $this->class . '" doesn\'t have any methods defined.');
         }
 
         foreach ($methods as $m) {
             if ($m->isPublic()) {
-                $methodParser = new MethodParser($this->_class, $m, $this->_normalize);
+                $methodParser = new MethodParser($this->parentClasses, $m, $this->normalize);
                 $parsedMethod = $methodParser->parse();
                 if ($parsedMethod) {
-                    $this->_parsedClass->addApiMethod($parsedMethod);
+                    $this->parsedClass->addApiMethod($parsedMethod);
                 }
             }
         }
