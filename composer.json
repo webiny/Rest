@@ -20,17 +20,17 @@
     ],
     "minimum-stability": "dev",
     "require": {
-        "php": ">=5.5.9",
-        "webiny/std-lib": "~1.4",
-        "webiny/cache": "~1.4",
-        "webiny/config": "~1.4",
-        "webiny/http": "~1.4",
-        "webiny/security": "~1.4",
-        "webiny/annotations": "~1.4",
-        "webiny/router": "~1.4"
+        "php": "^7",
+        "webiny/std-lib": "~1.5",
+        "webiny/cache": "~1.5",
+        "webiny/config": "~1.5",
+        "webiny/http": "~1.5",
+        "webiny/security": "~1.5",
+        "webiny/annotations": "~1.5",
+        "webiny/router": "~1.5"
     },
     "require-dev": {
-        "phpunit/phpunit": "~4",
+        "phpunit/phpunit": "~6",
         "mybuilder/phpunit-accelerator": "dev-master"
     },
     "autoload": {
@@ -40,7 +40,7 @@
     },
     "extras": {
         "branch-alias": {
-            "dev-master": "1.4-dev"
+            "dev-master": "1.5-dev"
         }
     }
 }
